@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from PIL import Image
 import google.generativeai as genai
 
-# Load .env
+# Load environment variables
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -16,23 +16,23 @@ app = Flask(__name__)
 CORS(app)
 
 def ensure_model():
+    """Configure Gemini model"""
     if not GEMINI_API_KEY:
-        raise RuntimeError("❌ GEMINI_API_KEY is missing. Add it to backend/.env")
+        raise RuntimeError("❌ GEMINI_API_KEY is missing. Add it in Vercel → Settings → Environment Variables.")
     genai.configure(api_key=GEMINI_API_KEY)
     return genai.GenerativeModel(GEMINI_MODEL)
 
-model = ensure_model()
-
-@app.get("/health")
-def health():
-    return {"ok": True, "model": GEMINI_MODEL}
-
 def decode_image(data_url):
+    """Convert base64 data URL to Pillow Image"""
     if not data_url or not data_url.startswith("data:"):
         return None
     _, b64 = data_url.split(",", 1)
     raw = base64.b64decode(b64)
     return Image.open(io.BytesIO(raw)).convert("RGB")
+
+@app.get("/health")
+def health():
+    return {"ok": True, "model": GEMINI_MODEL}
 
 @app.post("/api/chat")
 def chat():
@@ -50,11 +50,10 @@ def chat():
             "Answer briefly and practically. Provide Telugu if helpful."
         )
 
+        # Build conversation parts
         parts = [system]
-
         for h in history:
             parts.append(h["content"])
-
         if message:
             parts.append(message)
 
@@ -62,7 +61,10 @@ def chat():
         if img:
             parts.append(img)
 
+        # ✅ Initialize model inside function (fixes cold-start crash)
+        model = ensure_model()
         response = model.generate_content(parts)
+
         reply = response.text.strip() if response and response.text else "Could not generate a response."
         return jsonify({"reply": reply})
 
